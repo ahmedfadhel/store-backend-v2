@@ -84,23 +84,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.role == "customer"
 
 
-# # ----------------------------------------
-# # USER PROFILE MODEL
-# # ----------------------------------------
-# class UserProfile(models.Model):
-#     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-
-#     full_name = models.CharField(max_length=255)
-
-
-#     # Optional metadata
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
-
-#     def __str__(self):
-#         return self.full_name
-
-
 class ShippingAddress(models.Model):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="shipping_address"
