@@ -20,15 +20,15 @@ class Product(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        print("update")
+
         if not (self.pk):
             self.slug = unique_slugify(self, self.name)
 
         else:
             old = type(self).objects.get(pk=self.pk)
-            print("old")
+
             if old.name != self.name:
-                print("here")
+
                 self.slug = unique_slugify(self, self.name)
 
         super().save(*args, **kwargs)
@@ -224,7 +224,7 @@ class Bundle(models.Model):
     description = models.TextField(blank=True)
     slug = models.SlugField(unique=True, blank=True, allow_unicode=True)
     bundle_price = models.DecimalField(max_digits=10, decimal_places=2)
-    image = models.ImageField(upload_to="bundles/", null=True, blank=True)
+    image = models.ImageField(upload_to="/products/bundles/", null=True, blank=True)
     variants = models.ManyToManyField(
         "ProductVariant", through="BundleItem", related_name="bundles"
     )
