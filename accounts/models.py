@@ -102,6 +102,9 @@ class ShippingAddress(models.Model):
         null=True,
     )
 
+    def __str__(self):
+        return self.user.phone + " " + self.full_name
+
 
 class OTPVerification(models.Model):
     PURPOSE_CHOICES = [

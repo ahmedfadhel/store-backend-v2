@@ -224,7 +224,7 @@ class Bundle(models.Model):
     description = models.TextField(blank=True)
     slug = models.SlugField(unique=True, blank=True, allow_unicode=True)
     bundle_price = models.DecimalField(max_digits=10, decimal_places=2)
-    image = models.ImageField(upload_to="/products/bundles/", null=True, blank=True)
+    image = models.ImageField(upload_to="products/bundles/", null=True, blank=True)
     variants = models.ManyToManyField(
         "ProductVariant", through="BundleItem", related_name="bundles"
     )
