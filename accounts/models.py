@@ -1,15 +1,18 @@
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
     PermissionsMixin,
 )
+from carts.models import Cart
 from django.utils import timezone
 import random
 from datetime import timedelta
 from .utils import send_whatsapp_message
 from django.core.validators import RegexValidator
-
 
 iraq_phone_validator = RegexValidator(
     regex=r"^(?:\+964|00964|0)?7(7|8|9|5)\d{8}$",
@@ -82,6 +85,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_customer(self):
         return self.role == "customer"
+
+
+@receiver(post_save, sender=User)
+def create_user_cart(sender, instance, created, *args, **kwargs):
+    if created:
+        Cart.objects.create(user=instance)
 
 
 class ShippingAddress(models.Model):
