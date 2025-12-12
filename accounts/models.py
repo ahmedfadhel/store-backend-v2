@@ -94,9 +94,7 @@ def create_user_cart(sender, instance, created, *args, **kwargs):
 
 
 class ShippingAddress(models.Model):
-    user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="shipping_address"
-    )
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     full_name = models.CharField(max_length=255)
     city_id = models.IntegerField()
     city = models.CharField(max_length=50)
@@ -113,6 +111,9 @@ class ShippingAddress(models.Model):
 
     def __str__(self):
         return self.user.phone + " " + self.full_name
+
+    def has_shipping_info(self) -> bool:
+        return bool(self.city_id and self.region_id)
 
 
 class OTPVerification(models.Model):

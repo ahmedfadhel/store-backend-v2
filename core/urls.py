@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/catalog/", include("catalog.urls.public")),  # public-facing
     path("api/orders/", include("orders.urls")),
     path("api/returns/", include("returns.urls")),
+    path("api/discounts/", include("discounts.urls")),
     path(
         "api/dashboard/catalog/", include("catalog.urls.dashboard")
     ),  # dashboard admin routes

@@ -2,6 +2,9 @@ from rest_framework import serializers
 from orders.models import Order, OrderLine
 from carts.models import Cart
 from catalog.models import ProductVariant, Bundle
+from .services import OrderService
+
+from decimal import Decimal
 
 
 class OrderLineSerializer(serializers.ModelSerializer):
@@ -81,12 +84,13 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
     )
 
     # Optional shipping data for delivery
-    shipping_name = serializers.CharField(required=False, allow_blank=True)
-    shipping_address = serializers.CharField(required=False, allow_blank=True)
-    shipping_city = serializers.CharField(required=False, allow_blank=True)
-    shipping_postal_code = serializers.CharField(required=False, allow_blank=True)
-    shipping_country = serializers.CharField(required=False, allow_blank=True)
-
+    full_name = serializers.CharField(required=False, allow_blank=True)
+    cit_id = serializers.IntegerField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    region_id = serializers.IntegerField(required=False, allow_blank=True)
+    region = serializers.CharField(required=False, allow_blank=True)
+    location = serializers.CharField(required=False, allow_blank=True)
+    client_mobile2 = serializers.CharField(required=False, allow_blank=True)
     # Optional billing adjustments
     is_free_shipping = serializers.BooleanField(required=False, default=False)
     shipping_cost = serializers.DecimalField(
@@ -102,6 +106,7 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
 
     # Optional: for admin creating orders on behalf of customer
     customer_id = serializers.IntegerField(required=False)
+    coupon_code = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -165,18 +170,21 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
         user = request.user
 
         cart = validated_data["cart"]
-        order_type = validated_data["order_type"]
-        delivery_method = validated_data["delivery_method"]
-        related_order = validated_data["related_order"]
-        customer = validated_data["customer"]
+        order_type = validated_data.get("order_type", "normal")
+        delivery_method = validated_data.get("delivery_method", "delivery")
+        related_order = validated_data.get("related_order", None)
+        customer = validated_data.get("customer", cart.user)
 
         shipping_data = {
-            "shipping_name": validated_data.get("shipping_name", ""),
-            "shipping_address": validated_data.get("shipping_address", ""),
-            "shipping_city": validated_data.get("shipping_city", ""),
-            "shipping_postal_code": validated_data.get("shipping_postal_code", ""),
-            "shipping_country": validated_data.get("shipping_country", ""),
+            "full_name": validated_data.get("full_name", ""),
+            "city_id": validated_data.get("city_id", ""),
+            "city": validated_data.get("city", ""),
+            "region_id": validated_data.get("region_id", ""),
+            "region": validated_data.get("region", ""),
+            "location": validated_data.get("location", ""),
+            "client_mobile2": validated_data.get("client_mobile2", ""),
         }
+        coupon_code = validated_data.get("coupon_code") or None
 
         order = OrderService.create_from_cart(
             cart=cart,
@@ -186,10 +194,12 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
             related_order=related_order,
             is_free_shipping=validated_data.get("is_free_shipping", False),
             shipping_cost=validated_data.get("shipping_cost"),
+            extra_manual_discount=validated_data.get("discount_total", Decimal("0.00")),
             discount_total=validated_data.get("discount_total"),
             notes=validated_data.get("notes", ""),
             shipping_data=shipping_data,
             customer=customer,
+            coupon_code=coupon_code,
         )
 
         return order

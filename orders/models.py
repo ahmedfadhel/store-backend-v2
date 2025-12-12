@@ -3,6 +3,16 @@ from django.db import models
 from django.conf import settings
 from accounts.models import ShippingAddress
 from catalog.models import ProductVariant, Bundle
+from django.core.validators import RegexValidator
+
+iraq_phone_validator = RegexValidator(
+    regex=r"^(?:\+964|00964|0)?7(7|8|9|5)\d{8}$",
+    message="أدخل رقم هاتف عراقي صحيح (مثال: 07801234567 أو +9647801234567).",
+)
+try:
+    from django.db.models import JSONField
+except ImportError:
+    from django.contrib.postgres.fields import JSONField
 
 
 class Order(models.Model):
@@ -69,11 +79,42 @@ class Order(models.Model):
         related_name="issue_orders",
     )
 
+    shipping_profile = models.ForeignKey(
+        ShippingAddress,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="orders",
+    )
+    # Snapshot shipping info at time of order (does NOT auto-update when profile changes)
+    full_name = models.CharField(max_length=255, blank=True)
+    city_id = models.IntegerField(blank=True)
+    city = models.CharField(max_length=50, blank=True)
+    region_id = models.IntegerField(blank=True)
+    region = models.CharField(max_length=50, blank=True)
+    location = models.TextField(blank=True)
+    client_mobile2 = models.CharField(
+        max_length=15,
+        unique=True,
+        validators=[iraq_phone_validator],
+        blank=True,
+        null=True,
+    )
     # monetary fields
     items_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # NEW: discount snapshot from engine
+    discount_breakdown = JSONField(null=True, blank=True)
+    # Optional: profit snapshot (for analytics / debugging)
+    profit_before_discounts = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0
+    )
+    profit_after_discounts = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0
+    )
 
     # shipping info (for delivery)
     # shipping_name = models.CharField(max_length=255, blank=True)
@@ -81,9 +122,9 @@ class Order(models.Model):
     # shipping_city = models.CharField(max_length=100, blank=True)
     # shipping_postal_code = models.CharField(max_length=20, blank=True)
     # shipping_country = models.CharField(max_length=100, blank=True)
-    shipping_info = models.ForeignKey(
-        ShippingAddress, on_delete=models.SET_NULL, null=True, related_name="order"
-    )
+    # shipping_info = models.ForeignKey(
+    #     ShippingAddress, on_delete=models.SET_NULL, null=True, related_name="order"
+    # )
 
     # flags for issue-related logic
     is_free_shipping = models.BooleanField(

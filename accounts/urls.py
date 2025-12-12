@@ -7,6 +7,7 @@ from .views import (
     ResendOTPView,
     RequestResetView,
     ResetPasswordView,
+    ShippingAddressView,
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path("resend-otp/", ResendOTPView.as_view(), name="resend-otp"),
     path("request-reset", RequestResetView.as_view(), name="request-reset"),
     path("reset-password", ResetPasswordView.as_view(), name="reset-password"),
+    path("me/profile/", ShippingAddressView.as_view(), name="current-profile"),
 ]

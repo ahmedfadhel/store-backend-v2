@@ -4,10 +4,11 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .services import OTPService
-from .models import User
+from .models import User, ShippingAddress
 from .serializers import (
     UserSerializer,
     # UserProfileSerializer,
+    ShippingAdressSerializer,
     RegistrationSerializer,
     OTPVerificationSerializer,
     LoginSerializer,
@@ -116,3 +117,15 @@ class ResendOTPView(APIView):
             200 if result["success"] else 429
         )  # 429 Too Many Requests if on cooldown
         return Response(result, status=status_code)
+
+
+class ShippingAddressView(generics.RetrieveUpdateAPIView):
+    serializer_class = (
+        ShippingAdressSerializer  # Replace with actual ShippingAddressSerializer
+    )
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        user = self.request.user
+        profile, _ = ShippingAddress.objects.get_or_create(user=user)
+        return profile
