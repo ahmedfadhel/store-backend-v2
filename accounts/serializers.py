@@ -33,7 +33,7 @@ class UserSerializer(serializers.ModelSerializer):
 # USER SHIPPING ADDRESS SERIALIZER
 # -------------------------------
 class ShippingAdressSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
+    user = UserSerializer(read_only=True)
 
     class Meta:
         model = ShippingAddress

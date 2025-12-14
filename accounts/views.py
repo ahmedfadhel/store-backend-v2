@@ -39,6 +39,7 @@ class RegisterView(generics.CreateAPIView):
 # -------------------------------
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OTPBurstRateThrottle]
 
     def post(self, request):
         serializer = OTPVerificationSerializer(data=request.data)

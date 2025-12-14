@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-
+import secrets
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -28,7 +28,7 @@ class UserManager(BaseUserManager):
         if not phone:
             raise ValueError("Users must have a phone number")
         phone = str(phone).strip()
-        user = self.model(phone=phone, role=role, **extra_fields)
+        user = self.model(phone=phone, role=role)
         if password:
             user.set_password(password)
         else:
@@ -136,7 +136,7 @@ class OTPVerification(models.Model):
     @staticmethod
     def generate_code():
         """Generate a random 6-digit OTP."""
-        return str(random.randint(100000, 999999))
+        return str(secrets.randbelow(1000000))
 
     @classmethod
     def create_otp(cls, user, purpose):
