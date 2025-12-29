@@ -58,31 +58,13 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
-        res = Response(
+        return Response(
             {
-                # "refresh": str(refresh),
+                "refresh": str(refresh),
                 "access": str(refresh.access_token),
                 "user": UserSerializer(user).data,
             }
         )
-        res.set_cookie(
-            key="refresh_token",
-            value=str(refresh),
-            httponly=True,
-            secure=True,  # only over HTTPS in prod
-            samesite="Strict",  # or "Lax" if you need cross-subdomain
-            path="/account/refresh",  # only sent to refresh endpoint
-            max_age=60 * 60 * 24 * 7,  # 7 days
-        )
-        print(res.cookies)
-        return res
-        # return Response(
-        #     {
-        #         "refresh": str(refresh),
-        #         "access": str(refresh.access_token),
-        #         "user": UserSerializer(user).data,
-        #     }
-        # )
 
 
 # -------------------------------
