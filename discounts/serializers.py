@@ -29,7 +29,6 @@ class DiscountSerializer(serializers.ModelSerializer):
             "min_abandoned_minutes",
             "max_profit_share",
             "target_variants",
-            "override_price",
             "created_at",
         ]
         read_only_fields = ["created_at"]

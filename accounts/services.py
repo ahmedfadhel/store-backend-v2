@@ -1,5 +1,5 @@
 from django.utils import timezone
-from datetime import timedelta
+from django.core.cache import cache
 from .models import OTPVerification
 from .utils import send_whatsapp_message
 
@@ -7,29 +7,25 @@ from .utils import send_whatsapp_message
 class OTPService:
     COOLDOWN_SECONDS = 60
     EXPIRY_MINUTES = 5
-
-    @classmethod
-    def can_send_otp(cls, user, purpose):
-        """Check if cooldown period has passed."""
-        last_otp = OTPVerification.last_sent(user, purpose)
-        if not last_otp:
-            return True
-        delta = timezone.now() - last_otp.created_at
-        return delta.total_seconds() >= cls.COOLDOWN_SECONDS
+    MAX_VERIFY_ATTEMPTS = 5
+    BLOCK_SECONDS = 10 * 60  # 10 minutes
 
     @classmethod
     def send_otp(cls, user, purpose):
         """Send OTP if cooldown allows."""
-        if not cls.can_send_otp(user, purpose):
-            remaining = cls.COOLDOWN_SECONDS - int(
-                (
-                    timezone.now() - OTPVerification.last_sent(user, purpose).created_at
-                ).total_seconds()
-            )
-            return {
-                "success": False,
-                "message": f"Please wait {remaining}s before requesting another OTP.",
-            }
+        last_otp = OTPVerification.last_sent(user, purpose)
+        if last_otp:
+            delta = timezone.now() - last_otp.created_at
+            if delta.total_seconds() < cls.COOLDOWN_SECONDS:
+                remaining = max(0, cls.COOLDOWN_SECONDS - int(delta.total_seconds()))
+                return {
+                    "success": False,
+                    "message": f"Please wait {remaining}s before requesting another OTP.",
+                }
+
+        if last_otp and last_otp.is_expired():
+            last_otp.is_used = True
+            last_otp.save(update_fields=["is_used"])
 
         # Create OTP entry
         otp = OTPVerification.create_otp(user, purpose)
@@ -66,3 +62,24 @@ class OTPService:
         otp_entry.is_used = True
         otp_entry.save()
         return {"success": True, "message": "OTP verified successfully."}
+
+    @classmethod
+    def verify_with_attempt_limit(cls, user, purpose, code):
+        """
+        Validate OTP with an attempt cap to mitigate brute-force attacks.
+        """
+        cache_key = f"otp_verify_attempts:{purpose}:{user.phone}"
+        attempts = cache.get(cache_key, 0)
+        if attempts >= cls.MAX_VERIFY_ATTEMPTS:
+            return {
+                "success": False,
+                "message": "Too many OTP attempts. Please wait and try again.",
+            }
+
+        result = cls.verify_otp(user, purpose, code)
+        if result["success"]:
+            cache.delete(cache_key)
+            return result
+
+        cache.set(cache_key, attempts + 1, cls.BLOCK_SECONDS)
+        return result

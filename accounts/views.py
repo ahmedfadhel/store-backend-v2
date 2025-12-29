@@ -15,7 +15,7 @@ from .serializers import (
     RequestResetSerializer,
     ResetPasswordSerializer,
 )
-from .throttles import OTPBurstRateThrottle
+from .throttles import OTPBurstRateThrottle, OTPVerifyRateThrottle
 
 
 # -------------------------------
@@ -39,7 +39,7 @@ class RegisterView(generics.CreateAPIView):
 # -------------------------------
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [OTPBurstRateThrottle]
+    throttle_classes = [OTPBurstRateThrottle, OTPVerifyRateThrottle]
 
     def post(self, request):
         serializer = OTPVerificationSerializer(data=request.data)
@@ -58,13 +58,31 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
-        return Response(
+        res = Response(
             {
-                "refresh": str(refresh),
+                # "refresh": str(refresh),
                 "access": str(refresh.access_token),
                 "user": UserSerializer(user).data,
             }
         )
+        res.set_cookie(
+            key="refresh_token",
+            value=str(refresh),
+            httponly=True,
+            secure=True,  # only over HTTPS in prod
+            samesite="Strict",  # or "Lax" if you need cross-subdomain
+            path="/account/refresh",  # only sent to refresh endpoint
+            max_age=60 * 60 * 24 * 7,  # 7 days
+        )
+        print(res.cookies)
+        return res
+        # return Response(
+        #     {
+        #         "refresh": str(refresh),
+        #         "access": str(refresh.access_token),
+        #         "user": UserSerializer(user).data,
+        #     }
+        # )
 
 
 # -------------------------------
@@ -87,6 +105,7 @@ class RequestResetView(APIView):
 # -------------------------------
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OTPBurstRateThrottle, OTPVerifyRateThrottle]
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
@@ -128,5 +147,15 @@ class ShippingAddressView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         user = self.request.user
-        profile, _ = ShippingAddress.objects.get_or_create(user=user)
+        profile, _ = ShippingAddress.objects.get_or_create(
+            user=user,
+            defaults={
+                "full_name": "",
+                "city_id": 0,
+                "city": "",
+                "region_id": 0,
+                "region": "",
+                "location": "",
+            },
+        )
         return profile

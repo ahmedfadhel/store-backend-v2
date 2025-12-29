@@ -101,3 +101,27 @@ class CartItem(models.Model):
             raise ValueError("Variant line cannot have bundle.")
         if self.line_type == "bundle" and self.variant:
             raise ValueError("Bundle line cannot have variant.")
+        if self.quantity <= 0:
+            raise ValueError("Quantity must be positive.")
+        if self.unit_price < 0:
+            raise ValueError("Unit price cannot be negative.")
+        # Basic stock checks (best-effort; transactional checks should occur on checkout)
+        if self.line_type == "variant" and self.variant:
+            if self.variant.stock < self.quantity:
+                raise ValueError("Insufficient stock for variant.")
+        if self.line_type == "bundle" and self.bundle:
+            # ensure each bundled variant has enough stock
+            for item in self.bundle.items.select_related("variant"):
+                needed = item.quantity * self.quantity
+                if item.variant.stock < needed:
+                    raise ValueError("Insufficient stock for bundle contents.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        # Default unit_price to current sale_price/ bundle price if not provided
+        if self.unit_price is None:
+            if self.line_type == "variant" and self.variant:
+                self.unit_price = self.variant.sale_price
+            elif self.line_type == "bundle" and self.bundle:
+                self.unit_price = self.bundle.bundle_price
+        super().save(*args, **kwargs)

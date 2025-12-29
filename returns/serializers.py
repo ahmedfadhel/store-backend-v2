@@ -1,5 +1,6 @@
 # returns/serializers.py
 
+from django.db import models
 from rest_framework import serializers
 from returns.models import ReturnRequest, ReturnRequestLine
 from orders.models import Order, OrderLine
@@ -51,10 +52,14 @@ class ReturnRequestLineCreateSerializer(serializers.Serializer):
         except OrderLine.DoesNotExist:
             raise serializers.ValidationError("Order line not found.")
 
-        # TODO (optional): check not exceeding remaining quantity
-        # already_requested = sum(l.requested_quantity for l in order_line.return_lines.all())
-        # if requested_quantity + already_requested > order_line.quantity:
-        #     raise serializers.ValidationError("Requested quantity exceeds purchased quantity.")
+        already_requested = (
+            order_line.return_lines.aggregate(total=models.Sum("requested_quantity"))[
+                "total"
+            ]
+            or 0
+        )
+        if requested_quantity + already_requested > order_line.quantity:
+            raise serializers.ValidationError("Requested quantity exceeds purchased quantity.")
 
         attrs["order_line"] = order_line
         return attrs
@@ -99,6 +104,9 @@ class ReturnRequestCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         request = self.context["request"]
         user = request.user
+        line_ids = [line["order_line_id"] for line in attrs["lines"]]
+        if len(line_ids) != len(set(line_ids)):
+            raise serializers.ValidationError("Duplicate order lines are not allowed.")
 
         # validate original order
         try:

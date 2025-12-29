@@ -88,14 +88,13 @@ class Order(models.Model):
     )
     # Snapshot shipping info at time of order (does NOT auto-update when profile changes)
     full_name = models.CharField(max_length=255, blank=True)
-    city_id = models.IntegerField(blank=True)
+    city_id = models.IntegerField(blank=True, null=True)
     city = models.CharField(max_length=50, blank=True)
-    region_id = models.IntegerField(blank=True)
+    region_id = models.IntegerField(blank=True, null=True)
     region = models.CharField(max_length=50, blank=True)
     location = models.TextField(blank=True)
     client_mobile2 = models.CharField(
         max_length=15,
-        unique=True,
         validators=[iraq_phone_validator],
         blank=True,
         null=True,

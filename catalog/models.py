@@ -188,8 +188,8 @@ class TieredPrice(models.Model):
         ordering = ["basis", "unit", "min_value"]
 
     def __str__(self):
-        up = f"{self.max_value}" if self.max_value is not None else "∞"
-        return f"{self.variant} [{self.basis} {self.unit} {self.min_value}–{up}) → {self.sale_price}"
+        upper = f"{self.max_value}" if self.max_value is not None else "inf"
+        return f"{self.variant} [{self.basis} {self.unit} {self.min_value} -> {upper}) @ {self.sale_price}"
 
     def matches(
         self, qty: Decimal | None = None, weight: Decimal | None = None

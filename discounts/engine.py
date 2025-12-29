@@ -37,18 +37,20 @@ class DiscountEngine:
         original_total = Decimal("0")
         cost_total = Decimal("0")
 
-        for item in cart.items.select_related("variant"):
+        for item in cart.items.select_related("variant", "bundle"):
             line_total = item.unit_price * item.quantity
             original_total += line_total
             if item.variant:
                 cost_total += item.variant.cost_price * item.quantity
-            # For bundles, you could approximate cost from bundle composition if needed.
+            if item.bundle:
+                for bi in item.bundle.items.select_related("variant"):
+                    cost_total += bi.variant.cost_price * (bi.quantity * item.quantity)
 
         profit = max(original_total - cost_total, Decimal("0"))
         return original_total, cost_total, profit
 
     @classmethod
-    def _eligible_discounts(cls, cart, coupon_code=None):
+    def _eligible_discounts(cls, cart, original_total, coupon_code=None, has_bundle=False):
         now = timezone.now()
         discounts = Discount.objects.all()
         eligible = []
@@ -57,13 +59,15 @@ class DiscountEngine:
             if not d.is_currently_active():
                 continue
 
-            # Coupon constraint
+            # If cart has a bundle, skip any cart-level/coupon-style discounts entirely
+            if has_bundle and d.discount_type in ("cart_subtotal", "coupon", "abandoned_cart"):
+                continue
+
+            # Coupon constraint (only evaluated if allowed above)
             if d.discount_type == "coupon":
                 if not coupon_code or d.code.lower() != coupon_code.lower():
                     continue
 
-            # Cart subtotal condition (based on current cart, pre-discount)
-            original_total, _, _ = cls._compute_cart_totals_and_profit(cart)
             if d.min_cart_subtotal is not None and original_total < d.min_cart_subtotal:
                 continue
 
@@ -108,7 +112,10 @@ class DiscountEngine:
         global_max_discount = profit_before * cls.GLOBAL_MAX_PROFIT_SHARE
         global_discount_used = Decimal("0")
 
-        discounts = cls._eligible_discounts(cart, coupon_code)
+        has_bundle = cart.items.filter(line_type="bundle").exists()
+        discounts = cls._eligible_discounts(
+            cart, original_total, coupon_code, has_bundle=has_bundle
+        )
         applied_discounts = []
 
         current_total = original_total
@@ -181,6 +188,7 @@ class DiscountEngine:
         # Product-level override and flash sale:
         if discount.discount_type in ("product_override", "flash_sale"):
             # Only for targeted variants or all variants
+            override_price = getattr(discount, "override_price", None)
             for item in cart.items.select_related("variant"):
                 if not item.variant:
                     continue
@@ -190,9 +198,9 @@ class DiscountEngine:
                 ):
                     continue
                 # override price if given, otherwise apply percent/fixed per line
-                if discount.override_price is not None:
+                if override_price is not None:
                     original_line_total = item.unit_price * item.quantity
-                    new_line_total = discount.override_price * item.quantity
+                    new_line_total = override_price * item.quantity
                     line_discount = max(
                         original_line_total - new_line_total, Decimal("0")
                     )

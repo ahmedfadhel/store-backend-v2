@@ -29,28 +29,29 @@ class OrderService:
         """
         profile = getattr(customer, "profile", None)
         if shipping_data and any(shipping_data.values()):
+            required_fields = ["city_id", "city", "region_id", "region", "location"]
+            for f in required_fields:
+                if shipping_data.get(f) in (None, ""):
+                    raise ValueError(f"Missing required shipping field: {f}")
+
+            defaults = {
+                "full_name": shipping_data.get("full_name", "") or "",
+                "city_id": shipping_data["city_id"],
+                "city": shipping_data["city"],
+                "region_id": shipping_data["region_id"],
+                "region": shipping_data["region"],
+                "location": shipping_data["location"],
+                "client_mobile2": shipping_data.get("client_mobile2") or None,
+            }
+
             # ensure profile exists
             if profile is None:
-                profile = ShippingAddress.objects.create(user=customer)
-
-            # update fields from payload (if given)
-            for field in [
-                "full_name",
-                "city_id",
-                "city",
-                "region_id",
-                "region",
-                "location",
-                "client_mobile2",
-            ]:
-                if field in shipping_data and shipping_data[field] is not None:
-                    setattr(profile, field, shipping_data[field])
-
-            # also keep full_name in sync if provided
-            if "full_name" in shipping_data and shipping_data["full_name"]:
-                profile.full_name = shipping_data["full_name"]
-
-            profile.save()
+                profile = ShippingAddress.objects.create(user=customer, **defaults)
+            else:
+                for field, value in defaults.items():
+                    if value is not None:
+                        setattr(profile, field, value)
+                profile.save()
         else:
             # no new data: must have existing profile with valid shipping info
             if profile is None or not profile.has_shipping_info():
@@ -88,6 +89,12 @@ class OrderService:
 
         if customer is None:
             customer = cart.user
+
+        if order_type in ("wholesale", "replacement", "exchange", "cancellation"):
+            if not getattr(created_by, "is_staff", False) and not getattr(
+                created_by, "is_superuser", False
+            ):
+                raise ValueError("Admin/employee required to create this order type.")
 
         # 1) Ensure shipping profile exists and is up to date
         #    (except maybe pickup orders; you can relax this if you want)
@@ -148,10 +155,10 @@ class OrderService:
         if profile:
             shipping_kwargs.update(
                 shipping_profile=profile,
-                full_name=profile.full_name or profile.full_name or "",
-                city_id=profile.city_id or "",
+                full_name=profile.full_name or "",
+                city_id=profile.city_id if profile.city_id is not None else 0,
                 city=profile.city or "",
-                region_id=profile.region_id or "",
+                region_id=profile.region_id if profile.region_id is not None else 0,
                 region=profile.region or "",
                 location=profile.location or "",
                 client_mobile2=profile.client_mobile2 or "",
@@ -159,17 +166,24 @@ class OrderService:
         else:
             shipping_kwargs.update(
                 shipping_profile=None,
-                shipping_name="",
-                shipping_address="",
-                shipping_city="",
-                shipping_postal_code="",
-                shipping_country="",
-                shipping_phone="",
+                full_name="",
+                city_id=0,
+                city="",
+                region_id=0,
+                region="",
+                location="",
+                client_mobile2="",
             )
         # 3) Create order skeleton
         # 3) Create Order skeleton (lines come after)
+        # generate unique-ish code with a few retries
+        code = generate_order_code()
+        for _ in range(3):
+            if not Order.objects.filter(code=code).exists():
+                break
+            code = generate_order_code()
         order = Order.objects.create(
-            code=generate_order_code(),
+            code=code,
             customer=customer,
             created_by=created_by,
             order_type=order_type,
@@ -198,12 +212,24 @@ class OrderService:
             notes=notes,
             **shipping_kwargs,
         )
-        # 4) Copy CartItems → OrderLines and adjust stock
+        # 4) Copy CartItems → OrderLines and adjust stock with locking
         for cart_item in cart.items.select_related("variant", "bundle"):
             if cart_item.line_type == "variant":
-                variant = cart_item.variant
+                variant = (
+                    ProductVariant.objects.select_for_update()
+                    .select_related("product")
+                    .get(pk=cart_item.variant_id)
+                    if cart_item.variant_id
+                    else None
+                )
                 unit_price = cart_item.unit_price  # original unit price
                 qty = cart_item.quantity
+                if variant and order_type in ("normal", "wholesale"):
+                    updated = ProductVariant.objects.filter(
+                        pk=variant.pk, stock__gte=qty
+                    ).update(stock=F("stock") - qty)
+                    if not updated:
+                        raise ValueError("Insufficient stock for variant during order creation.")
 
                 OrderLine.objects.create(
                     order=order,
@@ -215,15 +241,23 @@ class OrderService:
                     product_name=str(variant),
                 )
 
-                if order_type in ("normal", "wholesale"):
-                    ProductVariant.objects.filter(pk=variant.pk).update(
-                        stock=F("stock") - qty
-                    )
-
             elif cart_item.line_type == "bundle":
                 bundle = cart_item.bundle
                 unit_price = cart_item.unit_price
                 qty = cart_item.quantity
+                if bundle and order_type in ("normal", "wholesale"):
+                    for bi in bundle.items.select_related("variant"):
+                        required = bi.quantity * qty
+                        locked_variant = (
+                            ProductVariant.objects.select_for_update()
+                            .select_related("product")
+                            .get(pk=bi.variant_id)
+                        )
+                        updated = ProductVariant.objects.filter(
+                            pk=locked_variant.pk, stock__gte=required
+                        ).update(stock=F("stock") - required)
+                        if not updated:
+                            raise ValueError("Insufficient stock for bundle contents during order creation.")
 
                 OrderLine.objects.create(
                     order=order,
@@ -234,12 +268,6 @@ class OrderService:
                     subtotal=unit_price * qty,
                     bundle_name=bundle.name,
                 )
-
-                if order_type in ("normal", "wholesale"):
-                    for bi in bundle.items.select_related("variant"):
-                        ProductVariant.objects.filter(pk=bi.variant.pk).update(
-                            stock=F("stock") - (bi.quantity * qty)
-                        )
         # 5) Finalize grand_total (items after discounts + shipping)
         order.grand_total = items_total_after_all_discounts + order.shipping_cost
         order.save(

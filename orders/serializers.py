@@ -42,11 +42,13 @@ class OrderSerializer(serializers.ModelSerializer):
             "shipping_cost",
             "discount_total",
             "grand_total",
-            "shipping_name",
-            "shipping_address",
-            "shipping_city",
-            "shipping_postal_code",
-            "shipping_country",
+            "full_name",
+            "city_id",
+            "city",
+            "region_id",
+            "region",
+            "location",
+            "client_mobile2",
             "is_free_shipping",
             "restock_processed",
             "notes",
@@ -85,9 +87,9 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
 
     # Optional shipping data for delivery
     full_name = serializers.CharField(required=False, allow_blank=True)
-    cit_id = serializers.IntegerField(required=False, allow_blank=True)
+    city_id = serializers.IntegerField(required=False)
     city = serializers.CharField(required=False, allow_blank=True)
-    region_id = serializers.IntegerField(required=False, allow_blank=True)
+    region_id = serializers.IntegerField(required=False)
     region = serializers.CharField(required=False, allow_blank=True)
     location = serializers.CharField(required=False, allow_blank=True)
     client_mobile2 = serializers.CharField(required=False, allow_blank=True)
@@ -195,7 +197,6 @@ class CreateOrderFromCartSerializer(serializers.Serializer):
             is_free_shipping=validated_data.get("is_free_shipping", False),
             shipping_cost=validated_data.get("shipping_cost"),
             extra_manual_discount=validated_data.get("discount_total", Decimal("0.00")),
-            discount_total=validated_data.get("discount_total"),
             notes=validated_data.get("notes", ""),
             shipping_data=shipping_data,
             customer=customer,

@@ -9,7 +9,6 @@ from django.contrib.auth.models import (
 )
 from carts.models import Cart
 from django.utils import timezone
-import random
 from datetime import timedelta
 from .utils import send_whatsapp_message
 from django.core.validators import RegexValidator
@@ -28,7 +27,12 @@ class UserManager(BaseUserManager):
         if not phone:
             raise ValueError("Users must have a phone number")
         phone = str(phone).strip()
-        user = self.model(phone=phone, role=role)
+        # Strip privilege-related fields to avoid elevation through serializers
+        extra_fields.pop("is_staff", None)
+        extra_fields.pop("is_superuser", None)
+        extra_fields.pop("is_active", None)
+        role = role if role in {"customer", "employee"} else "customer"
+        user = self.model(phone=phone, role=role, **extra_fields)
         if password:
             user.set_password(password)
         else:
@@ -37,11 +41,17 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, phone, password=None, **extra_fields):
+        if not phone:
+            raise ValueError("Superusers must have a phone number")
+        phone = str(phone).strip()
         extra_fields.setdefault("role", "admin")
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
-        return self.create_user(phone, password, **extra_fields)
+        user = self.model(phone=phone, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
 
 # ----------------------------------------
@@ -135,8 +145,8 @@ class OTPVerification(models.Model):
 
     @staticmethod
     def generate_code():
-        """Generate a random 6-digit OTP."""
-        return str(secrets.randbelow(1000000))
+        """Generate a cryptographically secure random 6-digit OTP."""
+        return str(secrets.randbelow(900000) + 100000)
 
     @classmethod
     def create_otp(cls, user, purpose):

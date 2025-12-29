@@ -8,7 +8,6 @@ def unique_slugify(instance, text, slug_field_name="slug"):
     """
     slug = slugify(text, allow_unicode=True)
     ModelClass = instance.__class__
-    print("I here")
     # Check if slug exists
     counter = 1
     unique_slug = slug
@@ -17,7 +16,6 @@ def unique_slugify(instance, text, slug_field_name="slug"):
         .exclude(pk=instance.pk)
         .exists()
     ):
-        print("here")
         unique_slug = f"{slug}-{counter}"
         counter += 1
 

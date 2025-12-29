@@ -142,6 +142,7 @@ REST_FRAMEWORK = {
         "anon": "10/minute",  # anonymous IPs (unauthenticated)
         "user": "20/minute",  # logged-in users
         "otp": "3/minute",  # custom OTP endpoints
+        "otp_verify": "5/minute",  # OTP verification attempts
     },
 }
 

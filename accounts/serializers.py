@@ -1,6 +1,19 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, OTPVerification, ShippingAddress
+from django.core.exceptions import ValidationError as DjangoValidationError
+from .models import User, OTPVerification, ShippingAddress, iraq_phone_validator
+from .services import OTPService
+
+
+def normalize_and_validate_phone(value: str) -> str:
+    phone = str(value).strip()
+    try:
+        iraq_phone_validator(phone)
+    except DjangoValidationError as exc:
+        # surface the first message from the validator
+        message = exc.messages[0] if hasattr(exc, "messages") else "Invalid phone number."
+        raise serializers.ValidationError(message)
+    return phone
 
 
 # -------------------------------
@@ -46,6 +59,7 @@ class ShippingAdressSerializer(serializers.ModelSerializer):
             "location",
             "client_mobile2",
         ]
+        read_only_fields = ["user"]
 
 
 # -------------------------------
@@ -55,8 +69,14 @@ class RegistrationSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=15)
     password = serializers.CharField(write_only=True)
 
+    def validate_phone(self, value):
+        phone = normalize_and_validate_phone(value)
+        if User.objects.filter(phone=phone).exists():
+            raise serializers.ValidationError("A user with this phone already exists.")
+        return phone
+
     def create(self, validated_data):
-        phone = validated_data["phone"]
+        phone = normalize_and_validate_phone(validated_data["phone"])
         password = validated_data["password"]
         user = User.objects.create_user(
             phone=phone, password=password, role="customer", is_active=False
@@ -73,18 +93,18 @@ class OTPVerificationSerializer(serializers.Serializer):
     otp = serializers.CharField(max_length=6)
 
     def validate(self, attrs):
-        phone = attrs["phone"]
+        phone = normalize_and_validate_phone(attrs["phone"])
         otp = attrs["otp"]
         try:
             user = User.objects.get(phone=phone)
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found")
 
-        otp_entry = OTPVerification.objects.filter(
-            user=user, purpose="activation", is_used=False
-        ).last()
-        if not otp_entry or not otp_entry.verify(otp):
-            raise serializers.ValidationError("Invalid or expired OTP")
+        result = OTPService.verify_with_attempt_limit(
+            user=user, purpose="activation", code=otp
+        )
+        if not result["success"]:
+            raise serializers.ValidationError(result["message"])
 
         # Activate the user
         user.is_active = True
@@ -100,7 +120,7 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        phone = attrs.get("phone")
+        phone = normalize_and_validate_phone(attrs.get("phone"))
         password = attrs.get("password")
         user = authenticate(phone=phone, password=password)
         if not user:
@@ -116,14 +136,14 @@ class RequestResetSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=15)
 
     def validate(self, attrs):
-        phone = attrs["phone"]
+        phone = normalize_and_validate_phone(attrs["phone"])
         try:
             user = User.objects.get(phone=phone, role="customer")
         except User.DoesNotExist:
             raise serializers.ValidationError(
                 "No active customer with this phone number"
             )
-        OTPVerification.create_otp(user, purpose="password_reset")
+        attrs["phone"] = phone
         return attrs
 
 
@@ -133,7 +153,7 @@ class ResetPasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        phone = attrs["phone"]
+        phone = normalize_and_validate_phone(attrs["phone"])
         otp = attrs["otp"]
         new_password = attrs["new_password"]
 
@@ -142,12 +162,13 @@ class ResetPasswordSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found")
 
-        otp_entry = OTPVerification.objects.filter(
-            user=user, purpose="password_reset", is_used=False
-        ).last()
-        if not otp_entry or not otp_entry.verify(otp):
-            raise serializers.ValidationError("Invalid or expired OTP")
+        result = OTPService.verify_with_attempt_limit(
+            user=user, purpose="password_reset", code=otp
+        )
+        if not result["success"]:
+            raise serializers.ValidationError(result["message"])
 
         user.set_password(new_password)
         user.save()
+        attrs["phone"] = phone
         return attrs

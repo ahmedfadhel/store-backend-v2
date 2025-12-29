@@ -57,7 +57,7 @@ class OrderListView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = Order.objects.select_related("customer", "created_by").prefetch_related(
-            "lines"
+            "lines__variant", "lines__bundle"
         )
         user = self.request.user
         if user.is_admin or user.is_employee:
@@ -75,7 +75,7 @@ class OrderDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         qs = Order.objects.select_related("customer", "created_by").prefetch_related(
-            "lines"
+            "lines__variant", "lines__bundle"
         )
         user = self.request.user
         if user.is_admin or user.is_employee:
